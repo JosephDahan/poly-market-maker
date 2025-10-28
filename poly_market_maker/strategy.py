@@ -1,6 +1,7 @@
 from enum import Enum
 import json
 import logging
+from typing import Optional
 
 from poly_market_maker.orderbook import OrderBookManager
 from poly_market_maker.price_feed import PriceFeed
@@ -10,6 +11,7 @@ from poly_market_maker.constants import MAX_DECIMALS
 from poly_market_maker.strategies.base_strategy import BaseStrategy
 from poly_market_maker.strategies.amm_strategy import AMMStrategy
 from poly_market_maker.strategies.bands_strategy import BandsStrategy
+from poly_market_maker.plan_provider import PlanProvider
 
 
 class Strategy(Enum):
@@ -32,6 +34,7 @@ class StrategyManager:
         config_path: str,
         price_feed: PriceFeed,
         order_book_manager: OrderBookManager,
+        plan_provider: Optional[PlanProvider] = None,
     ) -> BaseStrategy:
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -40,6 +43,7 @@ class StrategyManager:
 
         self.price_feed = price_feed
         self.order_book_manager = order_book_manager
+        self.plan_provider = plan_provider
 
         match Strategy(strategy):
             case Strategy.AMM:
@@ -57,6 +61,21 @@ class StrategyManager:
         except Exception as e:
             self.logger.error(f"{e}")
             return
+
+        if self.plan_provider is not None:
+            plan = self.plan_provider.current()
+            if plan is None:
+                self.logger.warning(
+                    "No allocator plan available for market %s", self.plan_provider.market_id
+                )
+            elif hasattr(self.strategy, "update_plan"):
+                self.logger.debug(
+                    "Applying allocator plan target %.2f (tilt=%s, confidence=%.2f)",
+                    plan.target_notional_usd,
+                    plan.tilt_bias,
+                    plan.tilt_confidence,
+                )
+                self.strategy.update_plan(plan)
 
         token_prices = self.get_token_prices()
         self.logger.debug(f"{token_prices}")

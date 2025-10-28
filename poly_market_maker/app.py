@@ -1,6 +1,13 @@
 import logging
-from prometheus_client import start_http_server
+import sys
 import time
+from pathlib import Path
+
+from prometheus_client import start_http_server
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from poly_market_maker.args import get_args
 from poly_market_maker.price_feed import PriceFeedClob
@@ -14,6 +21,7 @@ from poly_market_maker.lifecycle import Lifecycle
 from poly_market_maker.orderbook import OrderBookManager
 from poly_market_maker.contracts import Contracts
 from poly_market_maker.metrics import keeper_balance_amount
+from poly_market_maker.plan_provider import PlanProvider
 from poly_market_maker.strategy import StrategyManager
 
 
@@ -72,11 +80,13 @@ class App:
         )
         self.order_book_manager.start()
 
+        self.plan_provider = PlanProvider(self.market.condition_id)
         self.strategy_manager = StrategyManager(
             args.strategy,
             args.strategy_config,
             self.price_feed,
             self.order_book_manager,
+            plan_provider=self.plan_provider,
         )
 
     """

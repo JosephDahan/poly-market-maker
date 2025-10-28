@@ -1,7 +1,15 @@
+import sys
+from pathlib import Path
+
 from poly_market_maker.orderbook import OrderBook
 from poly_market_maker.constants import MIN_SIZE
 from poly_market_maker.order import Order
 
+ROOT = Path(__file__).resolve().parents[4]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from libs.common.plans import PlanSnapshotEntry  # noqa: E402
 from poly_market_maker.strategies.amm import AMMManager, AMMConfig
 from poly_market_maker.strategies.base_strategy import BaseStrategy
 
@@ -37,6 +45,7 @@ class AMMStrategy(BaseStrategy):
 
         super().__init__()
         self.amm_manager = AMMManager(self._get_config(config_dict))
+        self._default_max_collateral = self.amm_manager.max_collateral
 
     @staticmethod
     def _get_config(config: dict):
@@ -91,6 +100,18 @@ class AMMStrategy(BaseStrategy):
                 ]
 
         return (orders_to_cancel, orders_to_place)
+
+    def update_plan(self, plan: PlanSnapshotEntry) -> None:
+        target = plan.target_notional_usd or self._default_max_collateral
+        bounded_target = min(self._default_max_collateral, target)
+        self.logger.info(
+            "Applying allocator cap %.2f (default %.2f, tilt=%s, confidence=%.2f)",
+            bounded_target,
+            self._default_max_collateral,
+            plan.tilt_bias,
+            plan.tilt_confidence,
+        )
+        self.amm_manager.max_collateral = bounded_target
 
     @staticmethod
     def _new_order_from_order_type(order_type: OrderType, size: float) -> Order:
